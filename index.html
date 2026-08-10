@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#160f1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Magic</title>
+<meta name="description" content="Pick a card. Any card.">
+
+<style>
+/* ─────────────────────────────  base  ───────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --ink:       #17121a;
+  --cream:     #f7f1e6;
+  --cream-dim: #e8dfd0;
+  --crimson:   #8e1b2c;
+  --crimson-lo:#6d1322;
+  --gold:      #c9a24a;
+  --gold-lo:   #8d6c28;
+
+  --card-w: clamp(168px, 52vw, 268px);
+  --card-r: calc(var(--card-w) * 0.055);
+  --lift:   calc(var(--card-w) * 0.10);
+}
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: #120c17;
+  color: var(--cream);
+  font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+}
+
+/* the table: deep vignette so the cards float in a void */
+.ground {
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 34%, #3a2440 0%, #241733 42%, #160f1c 72%, #0d0912 100%);
+}
+.ground::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(72% 52% at 50% 40%, transparent 40%, rgba(6,4,10,.66) 100%);
+}
+
+/* faint gold hairline framing, like a playbill */
+.frame {
+  position: fixed; inset: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)) 14px;
+  border: 1px solid rgba(201,162,74,.16);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.stage {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: max(28px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+}
+
+/* ─────────────────────────  patter  ───────────────────────── */
+.patter {
+  flex: 0 0 auto;
+  font-size: clamp(13px, 4vw, 17px);
+  letter-spacing: .07em;
+  color: rgba(201,162,74,.72);
+  margin: 2px 0 0;
+  font-weight: 400;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* ─────────────────────────  the felt  ───────────────────────── */
+.table {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 460px;
+  display: grid;
+  place-items: center;
+  perspective: 1400px;
+}
+
+/* two fixed footprints: where the deck lives, where a drawn card lands */
+.slot {
+  position: absolute;
+  width: var(--card-w);
+  aspect-ratio: 250 / 350;
+  transform-style: preserve-3d;
+}
+.slot--drawn { top: 4%; }
+.slot--deck  { bottom: 2%; }
+
+/* ─────────────────────────  card shell  ───────────────────────── */
+.card {
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.face {
+  position: absolute; inset: 0;
+  border-radius: var(--card-r);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+.face--front { transform: rotateY(0deg); }              /* the patterned back */
+.face--rear  { transform: rotateY(180deg); }            /* the printed face  */
+
+/* ── patterned back ── */
+.back {
+  background: var(--crimson);
+  box-shadow:
+    inset 0 0 0 calc(var(--card-w) * .022) var(--cream),
+    inset 0 0 0 calc(var(--card-w) * .028) var(--crimson-lo),
+    0 0 0 1px rgba(0,0,0,.26);
+}
+.back::before {
+  content: ""; position: absolute;
+  inset: calc(var(--card-w) * .034);
+  border-radius: calc(var(--card-r) * .55);
+  background:
+    repeating-linear-gradient( 45deg, rgba(255,255,255,.11) 0 1.5px, transparent 1.5px 9px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.11) 0 1.5px, transparent 1.5px 9px),
+    repeating-linear-gradient( 45deg, rgba(0,0,0,.16) 0 1px, transparent 1px 18px),
+    linear-gradient(150deg, #a02334 0%, #8e1b2c 46%, #74152350 100%);
+  border: 1px solid rgba(201,162,74,.34);
+}
+.back::after {
+  content: ""; position: absolute;
+  left: 50%; top: 50%;
+  width: 34%; aspect-ratio: 1 / 1.42;
+  transform: translate(-50%,-50%) rotate(45deg);
+  border: 1px solid rgba(201,162,74,.5);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(201,162,74,.30) 0 18%, transparent 19%),
+    linear-gradient(135deg, rgba(255,255,255,.07), transparent 60%);
+}
+
+/* ── printed face ── */
+.pcard {
+  background:
+    radial-gradient(120% 100% at 20% 0%, #fffdf7 0%, var(--cream) 46%, var(--cream-dim) 100%);
+  box-shadow: inset 0 0 0 1px rgba(23,18,26,.16);
+  color: var(--ink);
+  position: absolute; inset: 0;
+}
+.pcard[data-red="1"] { --suit: var(--crimson); }
+.pcard[data-red="0"] { --suit: #1b1620; }
+
+/* corner index */
+.idx {
+  position: absolute;
+  width: 13%;
+  display: flex; flex-direction: column; align-items: center;
+  color: var(--suit);
+  line-height: .82;
+}
+.idx--tl { left: 5%; top: 3.2%; }
+.idx--br { right: 5%; bottom: 3.2%; transform: rotate(180deg); }
+.idx b {
+  font-size: calc(var(--card-w) * .112);
+  font-weight: 700;
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -.03em;
+}
+.idx svg { width: 52%; margin-top: .14em; fill: currentColor; display: block; }
+
+/* pip field */
+.pips {
+  position: absolute;
+  left: 21%; right: 21%; top: 7.5%; bottom: 7.5%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(13, 1fr);
+}
+.pips svg {
+  width: 74%; fill: var(--suit); display: block;
+  place-self: center;
+  grid-column: var(--c); grid-row: var(--r);
+}
+.pips svg[data-flip="1"] { transform: rotate(180deg); }
+.pips--ace svg { width: 186%; }
+
+/* ── the hand face: printed like a joker, word where the rank goes ── */
+.hcard {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 100% at 20% 0%, #fffdf7 0%, var(--cream) 46%, var(--cream-dim) 100%);
+  box-shadow: inset 0 0 0 1px rgba(23,18,26,.16);
+  color: var(--ink);
+}
+.hart {
+  position: absolute;
+  left: 8%; right: 8%; top: 8%; bottom: 8%;
+  display: grid; place-items: center;
+}
+.hart svg { width: 100%; height: 100%; display: block; }
+
+/* "YOU / LOOKED" stacked in the corner index, top-left and bottom-right */
+.idx--word { width: auto; white-space: nowrap; line-height: 1.04; color: var(--ink); }
+.idx--word b {
+  font-size: calc(var(--card-w) * .054);
+  font-weight: 700;
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: .05em;
+  text-indent: .05em;
+}
+
+/* ─────────────────────────  deck stack  ───────────────────────── */
+.deck {
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  cursor: pointer;
+}
+.deck.is-dead { cursor: default; pointer-events: none; }
+
+.slice { position: absolute; inset: 0; transform: translateY(calc(var(--i) * -0.42px)); }
+.slice-in { position: absolute; inset: 0; transform: rotate(var(--r)); }
+.slice .face { position: absolute; inset: 0; }
+
+/* the riffle: halves peel apart, interleave, square up */
+.is-shuffling .slice-in {
+  animation: var(--kf) 1450ms cubic-bezier(.36,.06,.2,1) both;
+  animation-delay: calc(var(--i) * 13ms);
+}
+.slice.h-l { --kf: riffle-l; }
+.slice.h-r { --kf: riffle-r; }
+
+@keyframes riffle-l {
+  0%,4%  { transform: translate(0,0) rotate(var(--r)); }
+  24%    { transform: translate(-42%, -4%) rotate(-8deg); }
+  44%    { transform: translate(-42%, -4%) rotate(-8deg); }
+  70%    { transform: translate(-2%, .4%) rotate(-1deg); }
+  84%    { transform: translate(0, -2.2%) rotate(.5deg); }
+  100%   { transform: translate(0,0) rotate(var(--r)); }
+}
+@keyframes riffle-r {
+  0%,4%  { transform: translate(0,0) rotate(var(--r)); }
+  24%    { transform: translate(42%, -4%) rotate(8deg); }
+  44%    { transform: translate(42%, -4%) rotate(8deg); }
+  70%    { transform: translate(2%, .4%) rotate(1deg); }
+  84%    { transform: translate(0, -2.2%) rotate(-.5deg); }
+  100%   { transform: translate(0,0) rotate(var(--r)); }
+}
+
+/* a breath of life while it waits to be tapped */
+.deck.is-live { animation: hover 4.6s ease-in-out infinite; }
+@keyframes hover {
+  0%,100% { transform: translateY(0) }
+  50%     { transform: translateY(calc(var(--lift) * -.11)) }
+}
+
+/* ─────────────────────  deal / discard  ───────────────────── */
+.card.is-dealing {
+  animation: deal var(--dur, 760ms) cubic-bezier(.2,.86,.24,1) both;
+}
+@keyframes deal {
+  0% {
+    transform: translate(var(--dx), var(--dy)) rotateY(0deg) rotate(var(--dr, 0deg)) scale(.95);
+  }
+  38% {
+    transform: translate(calc(var(--dx) * .42), calc(var(--dy) * .42 - var(--lift)))
+               rotateY(96deg) rotate(calc(var(--dr, 0deg) * .35)) scale(1.07);
+  }
+  78% {
+    transform: translate(0, calc(var(--lift) * -.14)) rotateY(180deg) rotate(0deg) scale(1.012);
+  }
+  100% {
+    transform: translate(0,0) rotateY(180deg) rotate(0deg) scale(1);
+  }
+}
+
+.card.is-leaving { animation: discard 420ms cubic-bezier(.4,0,.7,.4) both; }
+@keyframes discard {
+  0%   { transform: translate(0,0) rotateY(180deg) scale(1); opacity: 1 }
+  100% { transform: translate(-7%, -46%) rotateY(180deg) rotate(-7deg) scale(.86); opacity: 0 }
+}
+
+.card.is-resting { transform: translate(0,0) rotateY(180deg); }
+
+/* ─────────────────────────  prompt  ───────────────────────── */
+.rail {
+  flex: 0 0 auto;
+  min-height: clamp(58px, 13vh, 96px);
+  display: grid; place-items: center;
+  width: 100%;
+  padding-bottom: 4px;
+}
+.prompt {
+  margin: 0;
+  font-size: clamp(13px, 3.6vw, 16px);
+  letter-spacing: .2em;
+  text-indent: .2em;
+  text-transform: uppercase;
+  color: rgba(247,241,230,.5);
+  transition: opacity 260ms ease;
+}
+.prompt.is-hidden { opacity: 0 }
+
+/* Landscape on a phone can't stack two cards, so sit them side by side and
+   size off the height instead of the width. */
+@media (orientation: landscape) and (max-height: 620px) {
+  :root { --card-w: min(230px, calc((100dvh - 132px) / 1.4)); }
+  .table { max-width: 780px; }
+  .slot--drawn { top: auto; left: 5%; }
+  .slot--deck  { bottom: auto; right: 5%; }
+  .patter { font-size: 13px; margin-top: 0; }
+  .rail { min-height: 40px; }
+  .stage { padding-top: max(12px, env(safe-area-inset-top)); }
+}
+
+.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-shuffling .slice-in,
+  .deck.is-live { animation: none !important; }
+  .card.is-dealing { animation-duration: 1ms !important; }
+  .card.is-leaving { animation-duration: 1ms !important; }
+}
+</style>
+</head>
+
+<body>
+<div class="ground"></div>
+<div class="frame"></div>
+
+<main class="stage">
+  <p class="patter">Here&rsquo;s a magic trick....</p>
+
+  <div class="table" id="table">
+    <div class="slot slot--drawn" id="slotDrawn"></div>
+    <div class="slot slot--deck">
+      <div class="deck" id="deck" role="button" tabindex="0" aria-label="Draw a card"></div>
+    </div>
+  </div>
+
+  <div class="rail">
+    <p class="prompt" id="prompt">Shuffling</p>
+  </div>
+</main>
+
+<!-- ───────────────────────  symbol library  ─────────────────────── -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <symbol id="s-spade" viewBox="0 0 100 100">
+    <path d="M50 5C50 5 95 37 95 61c0 15-11 26-24 26-8 0-15-4-19-10 1 9 6 16 13 20H35c7-4 12-11 13-20-4 6-11 10-19 10C16 87 5 76 5 61 5 37 50 5 50 5Z"/>
+  </symbol>
+  <symbol id="s-heart" viewBox="0 0 100 100">
+    <path d="M50 94S5 62 5 35C5 18 18 6 33 6c9 0 16 5 17 13 1-8 8-13 17-13 15 0 28 12 28 29 0 27-45 59-45 59Z"/>
+  </symbol>
+  <symbol id="s-diamond" viewBox="0 0 100 100">
+    <path d="M50 3c0 0 15 26 42 47-27 21-42 47-42 47S35 71 8 50C35 29 50 3 50 3Z"/>
+  </symbol>
+  <symbol id="s-club" viewBox="0 0 100 100">
+    <path d="M41 60c1 13-3 25-10 34h38c-7-9-11-21-10-34Z"/>
+    <circle cx="50" cy="27" r="22"/>
+    <circle cx="24" cy="59" r="22"/>
+    <circle cx="76" cy="59" r="22"/>
+  </symbol>
+
+  <!--
+    The pose. Line art derived from "Okay hand gesture.svg" by Mohamed Ibrahim
+    (Clker), released CC0 / public domain via Wikimedia Commons. Reoriented
+    upside down with a tilt, recoloured to currentColor so it inks like the
+    rest of the deck. Source art bbox was 619x862 at (53,59); the transform
+    below recentres that box in this viewBox before rotating.
+  -->
+  <symbol id="hand" viewBox="30.5 22 749 956">
+    <g transform="translate(405 500) scale(-1 1) rotate(188) translate(-362.5 -490.15)">
+<g fill="currentColor" fill-rule="evenodd" stroke="none">
+<path d="M 561.56,264.6 C 563.31,265.26 565.15,266.03 567.03,266.88 C 581.5,273.53 592.34,298.68 586.53,314.28 C 569.89,307.73 557.53,282.77 561.56,264.6 z"/>
+<path d="M 626.37,345.55 C 616.59,343.72 575.45,331.31 569.6,325.55 C 566.01,306.35 629.96,326.35 626.37,345.55 z"/>
+<path d="M 233.21,421.1 C 257.06,429.98 272.27,447.5 282.31,470.2 L 277.71,473.78 L 279.24,479.4 C 274.13,479.4 269.02,479.4 263.9,479.4 C 255.46,460.23 244.53,443.54 230.14,430.3 L 234.75,426.72 L 233.21,421.1 z"/>
+<path d="M 317.16,494.09 L 316.07,488.61 C 348.95,510.06 387.48,541.83 386.65,586.81 C 367.19,578.81 361.06,555.77 349.82,540.78 C 337.9,524.87 322.46,514.62 313,497.81 L 317.16,494.09 z"/>
+<path d="M 362.1,436.44 C 373.3,422.45 399.63,428.99 392.78,445.65 C 383.58,445.65 374.37,445.65 365.17,445.65 L 366.7,440.02 L 362.1,436.44 z"/>
+<path d="M 466.43,660.45 C 454.05,650.34 448.4,633.47 444.95,614.42 C 465.36,618.57 471.35,637.13 475.64,657.39 L 470.01,655.85 L 466.43,660.45 z"/>
+<path d="M 472.06,661.99 L 475.64,657.39 C 484.56,657.44 482.9,674.73 478.71,678.87 C 475.98,676.48 471.78,675.57 466.44,675.8 C 466.44,670.68 466.44,665.57 466.44,660.45 L 472.06,661.99 z"/>
+<path d="M 432.68,789.34 C 443.09,775.73 453.06,795.29 463.36,795.48 C 450.08,821.06 438.05,847.91 429.61,878.33 C 417.15,881.22 402.95,895.26 389.72,887.54 C 393.94,860.33 412.98,834.33 429.61,813.89 C 434.98,807.28 446.71,797.89 435.75,798.54 L 437.28,792.92 L 432.68,789.34 z"/>
+<path d="M 125.81,841.51 C 145.07,841.68 142.62,863.56 162.63,862.99 C 142.08,871.46 167.41,908.1 150.36,921.29 C 145.24,921.29 140.13,921.29 135.02,921.29 C 127.68,900.64 119.25,865.97 125.81,841.51 z"/>
+<path d="M 457.23,92.75 C 467.22,108.25 449.86,119.13 448.02,132.64 C 401.38,146.35 391.15,196.47 355.96,221.63 C 355.96,224.7 355.96,227.77 355.96,230.84 L 350.34,229.31 L 346.75,233.91 C 341.64,230.84 344.58,219.72 337.55,218.57 C 349.68,196.95 370.86,184.37 380.51,160.26 C 385.04,146.52 371.52,150.84 374.37,138.78 C 409.51,134.02 436.88,121.51 448.02,92.75 L 452.62,94.28 L 457.23,92.75 z"/>
+<path d="M 352.38,235.44 L 355.96,230.84 C 366.95,242.22 362.21,275.63 389.72,261.53 L 393.44,265.69 L 398.92,264.6 C 387.81,286.21 390.34,321.47 362.1,325.97 C 353.2,292.46 349.97,272.27 346.76,233.91 L 352.38,235.44 z"/>
+<path d="M 404.55,232.37 L 398.92,233.91 C 396.66,220.39 408.86,221.34 411.2,212.43 C 421.14,219.83 459.66,200.96 460.3,224.7 L 455.7,228.28 L 457.23,233.91 C 450.18,237.72 419.39,228.96 408.13,236.98 L 404.55,232.37 z"/>
+<path d="M 266.97,224.7 C 271.25,262.24 269.51,321.67 306.86,335.18 L 302.26,338.76 L 303.79,344.38 C 294.59,344.38 285.38,344.38 276.17,344.38 C 258.76,313.73 248.25,276.15 217.87,258.46 L 222.47,256.92 L 217.87,255.39 C 218.95,251.36 223.27,250.56 224.01,246.18 L 228.61,247.72 L 233.21,249.25 C 258.44,270.06 247.98,231.3 257.76,221.63 L 261.34,226.24 L 266.97,224.7 z"/>
+<path d="M 357.49,359.21 L 355.96,353.59 C 368.43,356.46 384.68,368.45 380.51,378.14 C 367.64,387.2 359.32,369.91 352.89,362.79 L 357.49,359.21 z"/>
+<path d="M 227.59,180.21 L 224.01,184.81 C 211.32,179.38 227.75,161.32 208.66,160.26 C 212.85,153.19 222.16,151.25 227.08,144.92 L 230.66,149.52 L 236.28,147.99 C 237.79,161.77 234.73,170.98 233.21,181.74 L 227.59,180.21 z"/>
+<path d="M 233.21,74.34 L 233.21,80.48 C 226,76.44 219.26,71.92 205.6,74.34 L 207.13,68.71 L 202.53,65.13 C 202.03,61.56 203.2,59.67 205.6,58.99 C 220.03,58.98 244.73,64.74 239.35,74.34 L 233.21,74.34 z"/>
+<path d="M 184.63,100.42 L 190.25,98.89 C 187.25,116.34 181.41,130.96 171.84,141.85 L 167.24,140.31 L 162.63,141.85 C 152.37,131.88 169.28,103.44 181.05,95.82 L 184.63,100.42 z"/>
+<path d="M 159.57,154.12 L 165.7,154.12 C 167.02,198.83 162.62,249.26 168.77,289.15 L 163.15,287.61 L 159.57,292.21 C 138.05,245.97 152.1,190.63 153.43,144.92 C 155.91,145.5 156.49,148 159.57,147.99 L 159.57,154.12 z"/>
+<path d="M 177.47,318.3 L 181.05,313.69 C 199.27,324.11 202.41,349.62 214.8,365.86 C 234.13,365.98 255.63,363.9 266.97,372 C 255.98,387.58 205.85,374.23 184.12,387.34 L 185.65,382.74 L 181.05,381.21 C 180.31,358.42 163.53,351.67 153.43,338.24 L 157.42,334.25 L 159.57,329.04 C 167.6,337.12 175.41,329.31 171.84,316.76 L 177.47,318.3 z"/>
+<path d="M 151.13,329.04 L 150.36,335.18 C 145.4,336.04 145.07,332.28 141.15,332.11 L 142.69,325.2 L 147.29,319.83 C 149.77,322.47 155.7,321.65 156.5,325.97 L 151.13,329.04 z"/>
+<path d="M 127.34,278.4 L 125.81,283.01 C 87.39,272.33 100.42,210.2 73.64,187.88 C 70.57,187.88 67.5,187.88 64.44,187.88 L 60.86,183.28 L 55.23,184.81 C 49.47,178.96 57.05,179.26 55.23,169.47 C 70.66,163.35 73.56,174.31 88.99,175.6 C 96.29,198.98 113.3,212.66 113.54,243.11 C 121.47,253.59 130.79,262.69 131.95,279.94 L 127.34,278.4 z"/>
+<path d="M 113.03,395.01 L 116.61,390.41 C 123.15,396.15 131.45,400.12 131.95,411.89 L 127.35,415.47 L 128.88,421.1 C 112.22,421.39 111.26,405.98 107.4,393.48 L 113.03,395.01 z"/>
+<path d="M 159.06,453.32 L 162.64,448.72 C 195.68,470.97 205.77,502.61 217.87,553.05 C 223.4,576.07 227.21,588.66 230.15,617.49 C 234.21,657.44 255.54,690.42 257.77,734.1 C 250.06,749.9 234.73,767.53 230.15,792.41 C 226.23,813.69 233.61,839.21 224.01,853.78 C 219.66,853.52 215.32,853.27 214.8,856.85 C 194.17,844.96 212.65,824.02 205.6,804.68 C 190.66,800.78 191.24,822.54 181.05,813.89 C 182.06,786.01 229.53,757.73 233.22,740.24 C 233.81,737.4 228.91,737.75 227.08,737.17 L 228.61,731.55 L 224.01,727.97 C 247.79,709.77 215.62,662.21 208.67,617.49 C 207.42,609.48 210.02,597.1 208.67,589.88 C 201.46,551.29 188.19,515.58 181.05,488.61 C 173.6,474.58 156.44,470.26 153.43,451.78 L 159.06,453.32 z"/>
+<path d="M 169.28,790.87 L 174.91,789.34 C 166.14,805.12 161.8,825.33 141.15,829.23 C 141.73,807.3 154.18,797.25 165.7,786.27 L 169.28,790.87 z"/>
+<path d="M 592.25,445.65 C 585.41,456.2 584.24,472.42 576.9,482.47 C 584.67,511.53 608.52,524.5 604.52,565.33 C 589.04,560.28 578.51,542.27 570.77,528.5 C 562.64,514.05 556.98,494.39 549.29,479.4 L 553.89,475.82 L 552.36,470.2 C 553.38,470.2 554.4,470.2 555.42,470.2 C 569.42,460.83 571.64,447.44 564.63,430.3 C 553.11,402.14 558.15,354.98 555.42,325.97 C 563.04,318.71 573.49,325.94 583.04,325.97 C 572.88,362.05 572.93,420.85 595.32,442.58 L 592.25,442.58 L 592.25,445.65 z"/>
+<path d="M 479.22,431.84 L 475.64,436.44 C 457.17,407.86 465.64,352.33 432.68,338.24 C 439.92,327.07 464.28,333.02 457.23,307.56 C 456.05,292.37 434.84,297.21 438.81,276.87 C 457.64,278.5 466.07,290.53 478.71,298.35 L 477.17,302.95 L 481.78,304.49 C 447.32,339.3 494.55,378 484.84,433.37 L 479.22,431.84 z"/>
+<path d="M 609.13,447.18 L 604.52,445.65 C 605.81,438.82 620.81,443.24 622.93,445.65 C 624.04,455.36 606.09,459.39 604.52,448.72 L 609.13,447.18 z"/>
+<path d="M 533.94,700.35 C 526.55,699.09 527.27,705.95 518.6,703.42 L 520.13,697.79 L 515.53,694.21 C 549.26,660.42 579.35,623.01 610.66,586.81 L 614.24,591.41 L 619.87,589.88 C 616.33,616 591.87,621.21 586.11,645.11 C 554.93,674.03 576.87,655.14 563.68,672.31 C 537.19,694.72 550.62,676.51 533.94,700.35 z"/>
+<path d="M 477.79,733.19 L 481.78,737.17 C 481.05,752.72 467.78,768.95 457.23,764.79 C 452.94,753.2 466.8,736.35 475.64,727.97 L 477.79,733.19 z"/>
+<path d="M 619.36,576.07 L 613.73,577.6 C 618.67,528.38 647.44,472.86 653.62,424.17 C 642.32,398.65 621.52,382.62 619.87,347.45 C 647.19,351.08 652.99,402.11 672.04,424.17 C 670.78,452.58 664.82,476.27 650.56,491.68 C 641.91,521.9 639.69,558.55 622.94,580.67 L 619.36,576.07 z"/>
+<path d="M 456.53,216.86 C 456.53,216.86 503.45,217.51 516.48,226.64 C 529.51,235.76 569.26,269.64 569.26,269.64 L 566,283.33 C 566,283.33 524.3,253.35 509.96,245.53 C 495.62,237.72 454.58,234.46 454.58,234.46 L 456.53,216.86 z"/>
+</g>
+<g fill="none" stroke="currentColor" stroke-linecap="round">
+<path stroke-width="8.81" d="M 277.71,473.78 C 291.34,479.76 302.34,491.12 317.16,494.09"/>
+<path stroke-width="9.33" d="M 228.61,422.63 C 230.66,424.43 232.7,425.59 234.75,426.72"/>
+<path stroke-width="8.65" d="M 339.08,447.18 C 347.13,441.86 358.04,444.49 366.7,440.02"/>
+<path stroke-width="9.7" d="M 470.01,655.85 C 470.69,657.9 471.38,659.94 472.06,661.99"/>
+<path stroke-width="9.53" d="M 437.28,792.92 C 385.4,815.74 331.41,835.32 274.64,843.04"/>
+<path stroke-width="9.7" d="M 350.34,229.31 C 351.02,231.35 351.7,233.4 352.38,235.44"/>
+<path stroke-width="11.91" d="M 393.44,265.69 C 396.02,254.25 400.47,243.44 404.55,232.38"/>
+<path stroke-width="8.76" d="M 317.6,121.9 C 348.76,88.1 395.47,76.12 439.97,61.68 C 444.67,64.45 449.2,68.4 451.67,73.36 C 453.39,80.17 452.3,87.33 452.62,94.28"/>
+<path stroke-width="9.1" d="M 302.26,338.76 C 322.82,338.16 340.75,348.09 357.49,359.21"/>
+<path stroke-width="3.76" d="M 222.47,256.92 C 216.9,257.49 210.66,255.45 205.6,258.46"/>
+<path stroke-width="9.49" d="M 228.61,247.72 C 227.6,225.49 231.25,202.77 227.59,180.21"/>
+<path stroke-width="8.91" d="M 230.66,149.52 C 232.65,124.27 243.11,98.28 233.21,74.34"/>
+<path stroke-width="7.94" d="M 162.12,405.24 C 166.99,394.74 178.42,391.02 185.65,382.74"/>
+<path stroke-width="11.06" d="M 157.42,334.26 C 155.88,332.86 153.58,330.9 151.13,329.04"/>
+<path stroke-width="7.92" d="M 120.18,332.62 C 127.64,330.92 134.73,327.45 142.03,324.87"/>
+<path stroke-width="8.87" d="M 142.03,324.87 C 140.55,308.19 132.09,294.3 127.34,278.4"/>
+<path stroke-width="9.04" d="M 127.34,415.47 C 140.55,425.51 147.57,441.41 159.05,453.32"/>
+<path stroke-width="11.98" d="M 169.28,790.87 C 184.57,766.82 203.39,743.04 228.61,731.55"/>
+<path stroke-width="9.95" d="M 113.03,395.01 C 76.22,331.98 41.32,256.52 60.86,183.28"/>
+<path stroke-width="13.72" d="M 142.03,324.87 C 142.25,324.98 142.47,325.09 142.69,325.2"/>
+<path stroke-width="9.85" d="M 177.47,318.3 C 172.39,308.22 169.32,297.24 163.15,287.61"/>
+<path stroke-width="8.52" d="M 159.57,154.12 C 164.62,151.31 166.9,145.25 167.24,140.31"/>
+<path stroke-width="9.04" d="M 184.63,100.42 C 190.31,89 195.67,75.5 207.13,68.71"/>
+<path stroke-width="9.91" d="M 261.34,226.24 C 256.32,193.7 281.13,164.36 299.19,143.38"/>
+<path stroke-width="8.8" d="M 553.89,475.82 C 531.89,456.03 498.6,453.52 479.22,431.84"/>
+<path stroke-width="7.29" d="M 477.17,302.95 C 496.42,296.61 532.97,306.16 545.46,320.75"/>
+<path stroke-width="3.52" d="M 592.25,442.58 C 597.76,444.22 603.21,446.9 609.13,447.18"/>
+<path stroke-width="10.67" d="M 477.79,733.19 C 490.18,719.76 504.08,706.81 520.13,697.79"/>
+<path stroke-width="9.42" d="M 614.24,591.41 C 617.6,586.29 617.99,581.18 619.36,576.07"/>
+</g>
+    </g>
+  </symbol>
+</svg>
+
+<script>
+(() => {
+  "use strict";
+
+  const RANKS = ["A","2","3","4","5","6","7","8","9","10"];
+  const SUITS = [
+    { id: "s-spade",   red: 0 },
+    { id: "s-heart",   red: 1 },
+    { id: "s-diamond", red: 1 },
+    { id: "s-club",    red: 0 }
+  ];
+
+  // pip coordinates on a 3-column x 13-row field; row 7 is dead centre
+  const PIPS = {
+    "A":  [[2,7]],
+    "2":  [[2,1],[2,13]],
+    "3":  [[2,1],[2,7],[2,13]],
+    "4":  [[1,1],[3,1],[1,13],[3,13]],
+    "5":  [[1,1],[3,1],[2,7],[1,13],[3,13]],
+    "6":  [[1,1],[3,1],[1,7],[3,7],[1,13],[3,13]],
+    "7":  [[1,1],[3,1],[2,4],[1,7],[3,7],[1,13],[3,13]],
+    "8":  [[1,1],[3,1],[2,4],[1,7],[3,7],[2,10],[1,13],[3,13]],
+    "9":  [[1,1],[3,1],[1,5],[3,5],[2,7],[1,9],[3,9],[1,13],[3,13]],
+    "10": [[1,1],[3,1],[2,3],[1,5],[3,5],[1,9],[3,9],[2,11],[1,13],[3,13]]
+  };
+
+  const deck     = document.getElementById("deck");
+  const deckSlot = document.querySelector(".slot--deck");
+  const slot     = document.getElementById("slotDrawn");
+  const prompt  = document.getElementById("prompt");
+
+  // how many draws until the hand turns up — 2, 3, 4 or 5
+  const TURN = 2 + Math.floor(Math.random() * 4);
+
+  let draws = 0;
+  let busy  = true;
+  let spent = false;
+  let live  = null;          // card currently sitting in the drawn slot
+  let stock = shuffled();
+
+  /* ── stock of honest cards, dealt without repeats ── */
+  function shuffled() {
+    const out = [];
+    for (const s of SUITS) for (const r of RANKS) out.push({ rank: r, suit: s });
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+
+  /* ── build the printed face of a real card ── */
+  function faceOf(card) {
+    const { rank, suit } = card;
+    const pips = PIPS[rank]
+      .map(([c, r]) =>
+        `<svg viewBox="0 0 100 100" style="--c:${c};--r:${r}"${r > 7 ? ' data-flip="1"' : ""}><use href="#${suit.id}"/></svg>`)
+      .join("");
+
+    const index = pos =>
+      `<span class="idx idx--${pos}"><b>${rank}</b><svg viewBox="0 0 100 100"><use href="#${suit.id}"/></svg></span>`;
+
+    return `<div class="pcard" data-red="${suit.red}">
+        ${index("tl")}${index("br")}
+        <div class="pips${rank === "A" ? " pips--ace" : ""}">${pips}</div>
+      </div>`;
+  }
+
+  const handFace = () => {
+    const word = pos =>
+      `<span class="idx idx--${pos} idx--word"><b>YOU</b><b>LOOKED</b></span>`;
+    return `<div class="hcard">
+        ${word("tl")}${word("br")}
+        <div class="hart"><svg viewBox="30.5 22 749 956" role="img" aria-label="You looked"><use href="#hand"/></svg></div>
+      </div>`;
+  };
+
+  /* ── the patterned back, reused everywhere ── */
+  const backFace = () => `<div class="face face--front"><div class="back"></div></div>`;
+
+  /* ── lay the stack ── */
+  const DEPTH = 20;
+  (function buildDeck() {
+    let html = "";
+    for (let i = 0; i < DEPTH; i++) {
+      const r = (Math.random() * 1.5 - 0.75).toFixed(2);
+      html += `<div class="slice ${i % 2 ? "h-r" : "h-l"}" style="--i:${i};--r:${r}deg">
+                 <div class="slice-in">${backFace()}</div>
+               </div>`;
+    }
+    deck.innerHTML = html;
+  })();
+
+  /* ── riffle on load, then open for business ── */
+  deck.classList.add("is-shuffling");
+  window.setTimeout(() => {
+    deck.classList.remove("is-shuffling");
+    deck.classList.add("is-live");
+    busy = false;
+    say("Tap the deck to draw a card");
+  }, 1450 + DEPTH * 13 + 60);
+
+  function say(text) {
+    prompt.classList.add("is-hidden");
+    window.setTimeout(() => {
+      prompt.textContent = text;
+      prompt.classList.remove("is-hidden");
+    }, 200);
+  }
+
+  /* ── deal one ── */
+  function draw() {
+    if (busy || spent) return;
+    busy = true;
+    draws += 1;
+
+    const isTell = draws === TURN;
+    const dur    = isTell ? 1180 : 760;
+
+    // clear whatever is already lying there
+    if (live) {
+      const old = live;
+      old.classList.remove("is-resting");
+      old.classList.add("is-leaving");
+      old.addEventListener("animationend", () => old.remove(), { once: true });
+      live = null;
+    }
+
+    // Travel vector: from the stack to the drawn slot. Measure the static
+    // footprint, not the deck itself — the deck carries an idle float that
+    // would otherwise bleed a few pixels of jitter into every deal.
+    const a = deckSlot.getBoundingClientRect();
+    const b = slot.getBoundingClientRect();
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.setProperty("--dx",  (a.left - b.left).toFixed(1) + "px");
+    card.style.setProperty("--dy",  (a.top  - b.top ).toFixed(1) + "px");
+    card.style.setProperty("--dr",  (Math.random() * 7 - 3.5).toFixed(1) + "deg");
+    card.style.setProperty("--dur", dur + "ms");
+    card.innerHTML =
+      backFace() +
+      `<div class="face face--rear">${isTell ? handFace() : faceOf(stock.pop())}</div>`;
+
+    slot.appendChild(card);
+    void card.offsetWidth;
+    card.classList.add("is-dealing");
+
+    // thin the stack by one so the deck reads as being used up
+    const top = deck.lastElementChild;
+    if (top) top.remove();
+
+    card.addEventListener("animationend", () => {
+      card.classList.remove("is-dealing");
+      card.classList.add("is-resting");
+      live = card;
+
+      if (isTell) {
+        // the punchline is printed on the card itself, so nothing else fires
+        spent = true;
+        deck.classList.remove("is-live");
+        deck.classList.add("is-dead");
+        prompt.classList.add("is-hidden");
+      } else {
+        busy = false;
+        say("Draw another");
+      }
+    }, { once: true });
+  }
+
+  deck.addEventListener("click", draw);
+  deck.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); draw(); }
+  });
+})();
+</script>
+</body>
+</html>

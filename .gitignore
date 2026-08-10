@@ -17,3 +17,6 @@ venv/
 # Env
 .env
 .env.local
+
+# Local tool state
+.claude/settings.local.json
