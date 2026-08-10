@@ -22,20 +22,30 @@
   --gold:      #c9a24a;
   --gold-lo:   #8d6c28;
 
-  --card-w: clamp(168px, 52vw, 268px);
+  /* Conservative first-paint size: never overlap before JS measures. A card is
+     250x350, so two stacked need 2 * 1.4 * width of vertical room. svh is the
+     viewport WITH Safari's URL bar showing, which is the state this lives in.
+     fit() below then grows this to the real measured space. */
+  --card-w: min(clamp(140px, 52vw, 268px), calc((100vh - 190px) / 2.8));
+  --card-w: min(clamp(140px, 52vw, 268px), calc((100svh - 190px) / 2.8));
   --card-r: calc(var(--card-w) * 0.055);
   --lift:   calc(var(--card-w) * 0.10);
 }
 
-html, body { height: 100%; margin: 0; }
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;   /* kill iOS rubber-banding, not just scrolling */
+}
 
 body {
   background: #120c17;
   color: var(--cream);
   font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  overflow: hidden;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none; user-select: none;
+  -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
 }
 
@@ -61,10 +71,11 @@ body {
 .stage {
   position: relative;
   height: 100%;
+  height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: max(28px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  padding: max(20px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom));
 }
 
 /* ─────────────────────────  patter  ───────────────────────── */
@@ -73,32 +84,40 @@ body {
   font-size: clamp(13px, 4vw, 17px);
   letter-spacing: .07em;
   color: rgba(201,162,74,.72);
-  margin: 2px 0 0;
+  margin: 0 0 10px;
   font-weight: 400;
   font-style: italic;
   white-space: nowrap;
 }
 
 /* ─────────────────────────  the felt  ───────────────────────── */
+/* The two slots are flow siblings pushed apart by space-between, not absolutely
+   positioned at hand-tuned percentages. Whatever vertical room is left over
+   becomes the gap, so the deck can never ride up over the dealt card no matter
+   what Safari does with its URL bar. */
 .table {
   position: relative;
   flex: 1 1 auto;
+  min-height: 0;              /* let it shrink to the stage instead of growing */
   width: 100%;
   max-width: 460px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   perspective: 1400px;
 }
 
-/* two fixed footprints: where the deck lives, where a drawn card lands */
+/* two footprints: where a drawn card lands, and where the deck lives */
 .slot {
-  position: absolute;
+  position: relative;
+  flex: 0 0 auto;
   width: var(--card-w);
   aspect-ratio: 250 / 350;
   transform-style: preserve-3d;
 }
-.slot--drawn { top: 4%; }
-.slot--deck  { bottom: 2%; }
+.slot--drawn { z-index: 2; }   /* a card in flight must never pass behind the deck */
+.slot--deck  { z-index: 1; }
 
 /* ─────────────────────────  card shell  ───────────────────────── */
 .card {
@@ -291,10 +310,9 @@ body {
 /* ─────────────────────────  prompt  ───────────────────────── */
 .rail {
   flex: 0 0 auto;
-  min-height: clamp(58px, 13vh, 96px);
+  min-height: clamp(42px, 7vh, 64px);
   display: grid; place-items: center;
   width: 100%;
-  padding-bottom: 4px;
 }
 .prompt {
   margin: 0;
@@ -310,13 +328,11 @@ body {
 /* Landscape on a phone can't stack two cards, so sit them side by side and
    size off the height instead of the width. */
 @media (orientation: landscape) and (max-height: 620px) {
-  :root { --card-w: min(230px, calc((100dvh - 132px) / 1.4)); }
-  .table { max-width: 780px; }
-  .slot--drawn { top: auto; left: 5%; }
-  .slot--deck  { bottom: auto; right: 5%; }
+  :root { --card-w: min(230px, calc((100svh - 120px) / 1.4)); }
+  .table { flex-direction: row; max-width: 780px; padding: 0 4%; }
   .patter { font-size: 13px; margin-top: 0; }
-  .rail { min-height: 40px; }
-  .stage { padding-top: max(12px, env(safe-area-inset-top)); }
+  .rail { min-height: 34px; }
+  .stage { padding-top: max(10px, env(safe-area-inset-top)); }
 }
 
 .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
@@ -473,7 +489,8 @@ body {
   const deck     = document.getElementById("deck");
   const deckSlot = document.querySelector(".slot--deck");
   const slot     = document.getElementById("slotDrawn");
-  const prompt  = document.getElementById("prompt");
+  const prompt   = document.getElementById("prompt");
+  const table    = document.getElementById("table");
 
   // how many draws until the hand turns up — 2, 3, 4 or 5
   const TURN = 2 + Math.floor(Math.random() * 4);
@@ -483,6 +500,46 @@ body {
   let spent = false;
   let live  = null;          // card currently sitting in the drawn slot
   let stock = shuffled();
+
+  /* ── size the card to the room that actually exists ──
+     The CSS default is deliberately conservative so the first paint can never
+     overlap. This then measures the real felt and grows the card to fill it,
+     which is the only way to be right about Safari's URL bar, the safe-area
+     insets and the rail height all at once instead of guessing at each. */
+  const RATIO = 350 / 250;
+  let refitPending = false;
+
+  function fit() {
+    const h = table.clientHeight;
+    const w = table.clientWidth;
+    if (!h || !w) return;
+
+    const sideBySide = getComputedStyle(table).flexDirection === "row";
+    let cw;
+
+    if (sideBySide) {
+      const gap = Math.max(14, w * 0.05);
+      cw = Math.min(h / RATIO, (w - gap) / 2);
+    } else {
+      const gap = Math.max(14, h * 0.035);          // breathing room between them
+      cw = Math.min((h - gap) / 2 / RATIO, w * 0.64);
+    }
+
+    cw = Math.max(104, Math.min(268, Math.floor(cw)));
+    document.documentElement.style.setProperty("--card-w", cw + "px");
+  }
+
+  function refit() {
+    // Never resize mid-deal; a card in flight has its travel vector already
+    // baked into --dx/--dy and would visibly jump. Defer to the next idle beat.
+    if (busy) { refitPending = true; return; }
+    fit();
+  }
+
+  fit();
+  window.addEventListener("resize", refit);
+  window.addEventListener("orientationchange", refit);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", refit);
 
   /* ── stock of honest cards, dealt without repeats ── */
   function shuffled() {
@@ -543,6 +600,7 @@ body {
     deck.classList.remove("is-shuffling");
     deck.classList.add("is-live");
     busy = false;
+    if (refitPending) { refitPending = false; fit(); }
     say("Tap the deck to draw a card");
   }, 1450 + DEPTH * 13 + 60);
 
@@ -610,6 +668,7 @@ body {
       } else {
         busy = false;
         say("Draw another");
+        if (refitPending) { refitPending = false; fit(); }
       }
     }, { once: true });
   }
