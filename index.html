@@ -612,6 +612,28 @@ body {
     }, 200);
   }
 
+  /* ── belt and braces on animationend ──
+     animationend is the happy path but it is not a guarantee. If the animation
+     shorthand ever fails to substitute (one bad var() and animation-name
+     computes to none, so nothing ever runs), or the animation is interrupted,
+     the event never arrives and the game latches forever on a dead deck with no
+     way out but a refresh. We set the durations ourselves, so racing the event
+     against a timer costs nothing and removes the whole failure class. */
+  function whenSettled(el, ms, done) {
+    let fired = false;
+    let timer = 0;
+    const finish = () => {
+      if (fired) return;
+      fired = true;
+      window.clearTimeout(timer);
+      el.removeEventListener("animationend", onEnd);
+      done();
+    };
+    const onEnd = e => { if (e.target === el) finish(); };
+    timer = window.setTimeout(finish, ms);
+    el.addEventListener("animationend", onEnd);
+  }
+
   /* ── deal one ── */
   function draw() {
     if (busy || spent) return;
@@ -626,7 +648,7 @@ body {
       const old = live;
       old.classList.remove("is-resting");
       old.classList.add("is-leaving");
-      old.addEventListener("animationend", () => old.remove(), { once: true });
+      whenSettled(old, 700, () => old.remove());
       live = null;
     }
 
@@ -654,7 +676,7 @@ body {
     const top = deck.lastElementChild;
     if (top) top.remove();
 
-    card.addEventListener("animationend", () => {
+    whenSettled(card, dur + 350, () => {
       card.classList.remove("is-dealing");
       card.classList.add("is-resting");
       live = card;
@@ -670,7 +692,7 @@ body {
         say("Draw another");
         if (refitPending) { refitPending = false; fit(); }
       }
-    }, { once: true });
+    });
   }
 
   deck.addEventListener("click", draw);
